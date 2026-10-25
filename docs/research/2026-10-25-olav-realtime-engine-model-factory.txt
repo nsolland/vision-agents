@@ -1,0 +1,103 @@
+Dato: 2026-10-25
+Status: Brukeravklart produktretning og kildekodebasert undersøkelse. Ingen live inferens, modelltrening eller produksjonsvalidering er utført i denne sesjonen.
+Formål med denne arkiveringen: Bevare hele beslutningsløpet og vesentlige funn; ikke opprette ny kanonisk runtime-komponent eller endre eksisterende eierskap. Arbeidsnavn, ikke vedtatt produktnavn: felles sanntidsmotor og rekursiv forbedringsfabrikk.
+
+## Brukerens beslutninger
+Vi bygger globalt, ikke spesielt for Norge. Olav skal få syn først, så hørsel, stemme og armer gjennom Varde. Lyd og bilde må forstås fortløpende med bevart kontekst; rask objektgjenkjenning alene er utilstrekkelig. Modeller og spesialister skal kjøre så nær kilden som praktisk mulig. Tyngre tenkning skal ikke blokkere kontinuerlig sansing og rask respons.
+Samme tekniske motor skal kunne betjene Olav, relAIon, Emplai, Hush, Listen, Roomit og Babel Fish. Produktspesifikk funksjonsdeling og rettigheter må hentes fra eksisterende spesifikasjoner; denne sesjonen fastsetter ikke dem.
+Bruksområder: live kamera/omgivelser, PC-skjerm og appkontekst, systemlyd, vanlige møter, telefon- og videosamtaler, TV/strømmer, videoopptak og etteranalyse. Output: tale, tekst, avatar, overlay, og autoriserte oppdrag. PC, TV, telefon og briller er ulike grensesnitt til samme kontinuitet. Minne og tilgang mellom person/jobb/kunder skal ikke blandes automatisk.
+Kamera som filmer TV/skjerm er en nødvendig generell inngang når direkte medietilgang mangler. Det løser visuell innhenting, ikke automatisk kontroll eller overlay over tredjepartsapper. Direkte strøm gir bedre signal der den er tilgjengelig. En egen boks er valgfri, ikke produktets premiss.
+Brillereisen: XG89 lydbriller mangler kamera og display. Aktuelle display+kamera-kandidater var Brilliant Halo, Vuzix Blade 2/Shield og Meta Ray-Ban Display. Produsent-/SDK-egenskaper er dokumenterte muligheter, ikke testet hardware i denne sesjonen.
+
+## Tre salgbare produkter og flywheel
+1. Forbedret modell/checkpoint/adapter med dokumentert forbedring mot valgt grunnmodell.
+2. Sanntidsmotor som API/SDK og kjøreløsning for syn, hørsel, kontekst, respons og klientintegrasjon.
+3. Repeterbart forbedringssystem/metode som oppdager svakheter, lager kandidater og uavhengig verifiserer effekt. Potensielt lisens, verktøy eller forbedringstjeneste.
+Olav er første anvendelse og kilde til erfaring; ikke hele markedet.
+Bruk -> tillatt observasjon/tilbakemelding -> diagnostisert svakhet eller mulighet -> reproducerbart testtilfelle -> forbedringskandidat -> separat evaluering og regresjonskontroll -> godkjent versjon -> ny bruk.
+Rekursjonen omfatter også forbedring av fabrikkens egen forbedringsmetode. Dette er en hypotese/produktretning, ikke bevis på at selvforbedring allerede virker.
+Produksjonsdata er ikke automatisk treningsfasit. Bevar tillatelser, proveniens, usikkerhet og skille mellom modellpåstand, brukerrettelse og verifisert resultat. Ingen automatisk selvpromotering eller selvsertifisering.
+Mål: korrekt og nyttig reaksjon, kontekstbevaring, falske varsler, uteblitte hendelser, p50/p95/p99 ende-til-ende-forsinkelse, ressursbruk og kostnad per godkjent resultat. Fast evalueringssett, holdout, gjentakelser og regresjoner før adopsjon. Sammenlign også enklere ikke-KI-alternativ der relevant.
+
+## Eksisterende overlay-kontekst
+Tidligere samtalesøk fant VALO Ambient Overlay / SOL, med Cluely som UX-referanse: aktivert skjerm/systemlyd/mikrofon, fortløpende råd og styrte handlingsforslag. Historisk referanse:
+https://github.com/nsolland/valo-platform/blob/main/docs/architecture/CLUELY_AMBIENT_OVERLAY_IMPLEMENTATION_TRACK_2026-07-19.md
+Denne filens nåværende innhold ble ikke lest i denne sesjonen. Historiske kjeder er ikke ny arkitekturautoritet. Varde er brukerens ønskede handlingsflate; ingen ny execution chain innføres.
+
+## Vision Agents: faktisk kodegjennomgang
+Repo: https://github.com/nsolland/vision-agents
+Referanse-SHA: 902db86438aab03fb64aa7e6ea3afdcc867a3e80
+EdgeTransport/LocalEdge har kamera, mikrofon og lydoutput; lokal media betyr ikke at valgt modell er lokal.
+Agent kobler STT, LLM/realtime, TTS, prosessorer og verktøy.
+VideoForwarder leser kilde og venter sekvensielt på callbacks. En treg asynkron mottaker kan forsinke andre på samme forwarder. VideoLatestNQueue kaster eldste ved full kø, men isolerer ikke mottakere.
+YOLOPoseProcessor har 12 sekunders timeout; dette er ikke målt normal forsinkelse eller en sanntidsgaranti.
+Gemini-plugin sender faktiske bilder inn i en modelløkt. Providerens bildefrekvens og behandling må verifiseres, ikke utledes av klientens fps-parameter.
+examples/09_sales_assistant_example/main.py: AssemblyAI-transkripsjon + Gemini-tekstmodell + Stream Chat til separat macOS-overlay. Standardkonfigurasjonen ser ikke skjermen.
+Demoen har global møte-kontekst og bør ikke brukes som flerbrukerprodukt uten sesjonsisolasjon.
+Readme oppgir begrensninger for liten tekst, lange sesjoner og videoutløst respons. Ingen garanti om at video alene utløser proaktiv respons.
+Ingen liveøkt eller belastningstest ble kjørt.
+
+## Distribusjonsmetode: GStreamer
+https://gstreamer.freedesktop.org/documentation/coreelements/tee.html
+https://gstreamer.freedesktop.org/documentation/coreelements/queue.html
+https://gstreamer.freedesktop.org/documentation/app/appsink.html
+tee deler strømmen; egen queue gir tråd per gren. Full queue blokkerer som standard. Analysegren kan bruke leaky=downstream og liten kø for å droppe gamle ventende videobilder.
+Eksempel på kandidatkonfigurasjon: queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0
+Dette begrenser kun den køen, ikke in-flight inferens eller appsink/provider-kø. Tung analyse skal ikke gjøres i streaming-callback. Audio krever separat kontinuitetshåndtering og markerte tap. Tidsstempler må følge input og output. Korte sekvenser må bevares der bevegelse/hendelsesforløp krever det.
+aiortc MediaRelay buffered=False er en mindre alternativ endring innen nåværende stack, ikke testet her:
+https://aiortc.readthedocs.io/en/latest/helpers.html
+Edge-prinsipp: analyser nær kilden, send observasjoner/hendelser og hent relevante utsnitt ved behov. Dette reduserer overføring, men fjerner ikke modellens behandlingstid eller risiko for informasjonstap.
+
+## Fem åpne modellkandidater: undersøkt dokumentasjon og sentral kode
+MiniCPM-o 4.5:
+https://github.com/OpenBMB/MiniCPM-V
+Demo https://github.com/OpenBMB/MiniCPM-o-Demo
+Demo-SHA 47709a9210dfd71afa76c058e017fc8c4db5c8d2.
+9B, full-duplex video/audio -> text/speech. Proaktiv beslutning om tale ved 1Hz. PyTorch-demo krever >28GB VRAM; oppgitt init-forbruk ca 21.5GB. Oppgitt per-unit A100 ca 0.9s, optimalisert ca 0.5s, IKKE ende-til-ende responstid. Kvantisert C++/edge-spor finnes med andre krav; ikke anta ytelsesparitet. Code/weights oppgis Apache-2.0. Førstekandidat til samlet sansing/samtale.
+
+Realtime-Venus:
+https://github.com/inclusionAI/Realtime-Venus
+SHA e53ae8d5bde92b30364b26f2e4c13c9db7a8ffea.
+9B Omni og separat Audio; full-duplex, proaktiv respons, videominne og asynkron oppdragskjøring. Online-demo oppgir minst én A100. Standalone duplex_chat.py leser fil i per-second audio/frame-segmenter og kaller streaming_prefill/streaming_generate; dette alene er ikke bevis for kamera-til-svar-latency. Demo har kamera/mikrofon og er dokumentert for én aktiv samtale. Code/weights publisert med Apache-2.0 og upstream-vilkår. Sterk helhetskandidat, ikke bekreftet lett edge.
+
+StreamingVLM:
+https://github.com/mit-han-lab/streaming-vlm
+SHA a940d8cbfa14eefe651b7f4adeb81825c28cc6c6.
+Kompakt KV-cache, kort visuell og lengre teksthistorikk. Publisert opptil 8fps på H100 er throughput, ikke full responstid. Gjennomgått inference.py leser videofiler i ettsekundssegmenter og genererer tekst/WebVTT; live-kildeadapter og separat lyd kreves. Kode MIT; valgt checkpoint/basevilkår må verifiseres separat. Kandidat for vedvarende syn.
+https://hanlab.mit.edu/projects/streamingvlm
+
+VITA-1.5:
+https://github.com/VITA-MLLM/VITA
+SHA 35d064a6542a5d812136fcd66fa93d9beb27b03c.
+8B-ish modell med vision/speech og oppgitt ca 1.5s taleinteraksjon. Gjennomgått web_ability_demo.py bruker opptak/filer og stop_recording, server.py bruker filbasert video sampling. Dette er ikke dokumentert identisk med krav om samtidig, kontinuerlig situasjonsforståelse. License.txt var tom i hentet revisjon; lisens er uavklart. Nedprioritert, ikke avvist som forskningsreferanse.
+
+Stream-Omni:
+https://github.com/ictnlp/Stream-Omni
+SHA 4d38d4786e81250c222ee4f4f883dcfaa4096b73.
+Demo gradio_web.py laster bilde og innspilt lyd, strømmer respons og bruker separat CosyVoice. Ikke dokumentert kontinuerlig kameraforståelse mens modellen snakker. Under 32GB VRAM foreslås 8-bit for modellworker; ikke total stack-minnegaranti. Repo GPL-3.0; basevekter/øvrige komponenter har egne vilkår. Tidligere bred omtale som komplett live-videomotor korrigeres. Nedprioritert.
+
+## Andre eksisterende løsninger
+Tavus CVI/Raven/Sparrow: kommersiell referanse. Kamera/skjerm/audio-observasjoner, Raven-2 visuell historikk og proaktive callouts. Egen backend støttes med streaming /chat/completions; persepsjonsmetadata og timelines sendes dit. Observasjoner kan være forsinket/ufullstendige. Ingen offentlig edge-/vektdistribusjon funnet. LiveKit/Pipecat-avatarintegrasjon inkluderer ikke automatisk Raven: alternativ pipeline er dokumentert inkompatibel med persepsjon.
+https://docs.tavus.io/sections/conversational-video-interface/pal/perception
+https://docs.tavus.io/sections/conversational-video-interface/pal/llm
+https://docs.tavus.io/sections/conversational-video-interface/quickstart/pipeline-modes
+Retell/Vapi: referanser for samtalekontekst, virksomhetskunnskap, turstyring og support/salg. Ikke bevis for generell visuell forståelse.
+LiveKit/Pipecat: åpne transport-/samtalerammeverk, ikke i seg selv persepsjonsmodell.
+Recall.ai: møteinnhenting og deltaker-/mediestrømmer.
+Speechmatics/Deepgram/AssemblyAI: sanntidstranskripsjon/talermerking; SimulStreaming åpent streaming/oversettelsesspor; WhisperX etteranalyse og ordtidsstempler.
+NVIDIA VSS/DeepStream: videoarkiv, CV, hendelser, søk og VLM-analyse; noen løp analyserer segmenter og må ikke beskrives som automatisk subsekund samtale.
+Kilder: https://github.com/pipecat-ai/pipecat ; https://docs.livekit.io/agents/ ; https://docs.recall.ai/docs/desktop-sdk ; https://github.com/NVIDIA-AI-Blueprints/video-search-and-summarization ; https://github.com/ufal/SimulStreaming ; https://github.com/m-bain/whisperX
+
+## Briller og kode
+Brilliant SDK SHA d55ab7bff555174a8383a4b767f487ba45d8016e:
+https://github.com/brilliantlabsAR/brilliant_sdk
+Flutter realtime_openai har valgfri realtime-server, LC3 begge veier, knappestyring, avbrytelse og svartekst på Halo. Kamera finnes separat; ikke integrert i det samtaleeksemplet. WebBluetooth støtter ikke Safari. Halo-drawable area 256x256. Firmwareavhengighet og faktisk latency må måles.
+Vuzix Speech_Command_SDK_Sample SHA 58651d039a026f0669d7c9bc9e5ff9aed07e7a41 ble lest: egne wake phrases og talekommandoer; ikke generell samtalemotor. Blade 2/Shield gir Android-kameratilgang og egne apper. Fysisk utstyr ble ikke testet.
+
+## Neste avgrensede bevis og åpne spørsmål
+1. Samme kamerakilde og tidsfestede scenarier for MiniCPM og Venus; StreamingVLM sammenlignes separat på kontinuitet.
+2. Mål korrekt nåsituasjon, tidligere hendelse, lyd/bilde-relasjon, proaktiv reaksjon og avbrytelse; inkluder falske varsler og stillhet.
+3. Mål hele kjeden og lag; gjør én mottaker kunstig treg og bekreft at andre mottakere fortsetter. Ikke anta at årsak er bevist uten test.
+4. Bevar grunnmodell, SHA, konfigurasjon, datasettproveniens, før/etter og råresultater slik at forbedringsmetoden kan gjentas og produktifiseres.
+5. Runtime/repo-eierskap, porteføljeplassering, modelllisens, hardware, API-nøkler og lagrings-/datatillatelser må avklares mot kanoniske kilder før implementering. Ingen nye repoer eller universelle execution-hopp er opprettet ved denne arkiveringen.
+Completion for denne lagreoppgaven: faktisk skrevet og lest tilbake i GitHub, Notion og AAA, med referanser/kvitteringer. Dokumentet er et komplett substansielt beslutnings- og forskningsreferat av sesjonen, ikke en ordrett transkripsjon.
